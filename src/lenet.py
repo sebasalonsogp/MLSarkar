@@ -66,7 +66,7 @@ class LeNet(nn.Module):
         # Conv2d(6, 16, 5)
         x = self.conv2(x)
         # Linear(16*5*5, 120)
-        x = x.view(x.size()[0], -1)
+        x = x.view(x.size()[0], -1) #reshape tensor into (batch_size, n=16*5*5) i think
         x = self.fc1(x)
         # Linear(120, 84)
         x = self.fc2(x)
@@ -91,27 +91,26 @@ def train():
             outputs = model(images)
             loss = cost(outputs, labels)
 
-            #backwards pass and optimizer step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            #backwards pass and optimizer step (learning)
+            optimizer.zero_grad() #zeroes out the gradients, removing exisitng ones to avoid accumulation
+            loss.backward() #gradient of loss, how much each parameter contributed to the loss
+            optimizer.step() #adjusts parameters based on results to minimize loss
 
             if (i+1) % 100 == 0:
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.format(epoch+1, num_epochs, i+1, total_step, loss.item()))
 
 def test():
-    with t.no_grad():
-        correct = 0
-        total = 0
+    with t.no_grad(): #no gradient descent
+        correct, total = 0, 0
         for images, labels in testdataset:
-            images = images.to(device)
-            labels = labels.to(device)
-            outputs = model(images)
-            _, predicted = t.max(outputs.data, 1)
+            images = images.to(device) #images
+            labels = labels.to(device) #true labels
+            outputs = model(images)# passes through images through model
+            _, predicted = t.max(outputs.data, 1) #gets max values and their indices
             total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+            correct += (predicted == labels).sum().item() #gets tensor of boolean, counting all the Trues and the extracting the # of trues as a scalar
 
-        print('Accuracy of the network on the 10000 test images: {} %'.format(100 * correct / total))
+        print('Accuracy of the network on the test images: {} %'.format(100 * correct / total))
 
 
 
