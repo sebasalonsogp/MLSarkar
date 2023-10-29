@@ -120,7 +120,7 @@ def train():
             t.save(model.state_dict(), 'best_model.pth')
             print("New Lowest Loss in Network: {:.4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
 
-    print("Lowest Loss in Network {: .4f} at Epoch [{}/{}]".format(global_lowest_loss), best_epoch, num_epochs)
+    print("Lowest Loss in Network {: .4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
 
 
 def test():
