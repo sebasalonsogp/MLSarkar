@@ -1,9 +1,13 @@
+import math
+
 import torch as t
 import numpy as np
 import torch.nn as nn
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torchinfo import summary
+from torchviz import make_dot
+import matplotlib.pyplot as plt
 
 #TODO
 # 1. Test other activation functions to see if they work different (RELU V SIGMOID)
@@ -18,6 +22,11 @@ num_classes = 10
 learning_rate = 0.001
 num_epochs = 13
 device = t.device('cuda' if t.cuda.is_available() else 'cpu')
+avg_angles = []
+print(t.cuda.is_available())
+
+
+
 
 # Import dataset and load it
 
@@ -55,16 +64,18 @@ class LeNet(nn.Module):
         )
         # Linear(16*5*5, 120)
         self.fc1 = nn.Sequential(
-            nn.Linear(16 * 5 * 5, 120),  # fully connected layer 1
+            nn.Linear(16 * 5 * 5, 84),  # fully connected layer 1
             nn.ReLU()  # activation function
         )
         # Linear(120, 84)
-        self.fc2 = nn.Sequential(
-            nn.Linear(120, 84),  # fully connected layer 2
-            nn.ReLU()  # activation function
-        )
+        # self.fc2 = nn.Sequential(
+        #     nn.Linear(120, 84),  # fully connected layer 2
+        #     nn.ReLU()  # activation function
+        # )
         # Linear(84, 10)
-        self.fc3 = nn.Linear(84, num_classes)  # fully connected layer 3 (output layer)
+        self.fc3 = nn.Linear(84, num_classes)  # fully connected layer 3
+
+
 
     def forward(self, x):
         # Conv2d(1, 6, 5)
@@ -75,22 +86,18 @@ class LeNet(nn.Module):
         x = x.view(x.size()[0], -1)  # reshape tensor into (batch_size, n=16*5*5) i think
         x = self.fc1(x)
         # Linear(120, 84)
-        x = self.fc2(x)
+        # x = self.fc2(x)
         # Linear(84, 10)
         x = self.fc3(x)
         return x
 
-
 model = LeNet().to(device)
-
 cost = nn.CrossEntropyLoss()  # cost function
-optimizer = t.optim.Adam(model.parameters(), lr=learning_rate)  # optimizer
+optimizer = t.optim.Adam(model.parameters(), lr=learning_rate)  # optimizr
 
-
-
-
-## by batch or each individual step?
 def train():
+    global avg_angles
+    print("training...")
     total_step = len(dataset)
     global_lowest_loss = float('inf')
     best_epoch = 1
@@ -119,8 +126,23 @@ def train():
             best_epoch = epoch + 1
             t.save(model.state_dict(), 'best_model.pth')
             print("New Lowest Loss in Network: {:.4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
-
+        avg_angles.append(dot_product())
+    plot_averages()
     print("Lowest Loss in Network {:.4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
+
+
+def plot_averages():
+    global avg_angles
+    epochs = range(1, num_epochs + 1)  # Generate a list of epoch numbers from 1 to num_epochs
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs, avg_angles, marker='o')  # Use a marker to indicate each data point
+    plt.xticks(epochs)
+    plt.yticks(range(80, 96, 5))
+    plt.xlabel('Epoch')
+    plt.ylabel('Average Angle')
+    plt.title('Convergence of Average Angle Over Epochs LeNet MNIST ')
+    plt.grid(True)
+    plt.show()
 
 
 def test():
@@ -133,12 +155,49 @@ def test():
             _, predicted = t.max(outputs.data, 1)  # gets max values and their indices
             total += labels.size(0)
             correct += (
-                        predicted == labels).sum().item()  # gets tensor of boolean, counting all the Trues and the extracting the # of trues as a scalar
+                        predicted == labels).sum(   ).item()  # gets tensor of boolean, counting all the Trues and the extracting the # of trues as a scalar
 
         print('Accuracy of the network on the test images: {} %'.format(100 * correct / total))
 
+
+def dot_product():
+    model.load_state_dict(t.load('best_model.pth'))
+    #fc2_weights = model.fc2[0].weight.data
+    fc_weights = model.fc3.weight.data
+    model.eval()
+
+    normalized_weights = fc_weights / t.norm(fc_weights, dim=1, keepdim=True)
+    # print(normalized_weights)
+    dot_product_tensor = t.mm(normalized_weights, normalized_weights.t())
+
+    # t.set_printoptions(precision=2)
+    t.round(dot_product_tensor, decimals=2, out=dot_product_tensor)
+
+    # cosine_similarity_matrix = t.round(dot_product_tensor, decimals=2)
+    # dot_array = dot_product_tensor.numpy()
+
+    sum = 0
+    for i, row in enumerate(dot_product_tensor):
+        for j, col in enumerate(row):
+            dot_product_tensor[i][j] = math.acos(col) * (180 / math.pi)
+
+    for row in dot_product_tensor:
+        for col in row:
+            sum += abs(col)
+
+    avg = sum/90
+    print("Average vector dot product angle: ", avg)
+    print(dot_product_tensor)
+    return avg
+
+
 if __name__  == '__main__':
+    #dot_product()
     train()
-    test()
+    #plot_averages()
+    #test()
+
+
+
 
 # summary(model=model, input_size=(1, 1, 28, 28), col_width=20,col_names=['input_size', 'output_size', 'num_params', 'trainable'], row_settings=['var_names'], verbose=0)

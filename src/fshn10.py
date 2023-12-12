@@ -36,13 +36,14 @@ model = model.to(device)
 
 
 #Freeze Layers
-for name,param in model.named_parameters():
-    if 'fc2' in name:
-        param.requires_grad = False
+# for name, param in model.named_parameters():
+#     if 'fc2' in name:
+#         param.requires_grad = False
 
 for name, param in model.named_parameters():
-    if 'fc2' in name:
+    if not 'fc2' in name:
         param.requires_grad = False
+
 
 cost = nn.CrossEntropyLoss()  # cost function
 optimizer = t.optim.Adam(model.parameters(), lr=learning_rate)  # optimizer
@@ -75,7 +76,7 @@ def train():
         if avg_loss < global_lowest_loss:
             global_lowest_loss = avg_loss
             best_epoch = epoch + 1
-            t.save(model.state_dict(), 'frozenfc2_model.pth')
+            #t.save(model.state_dict(), 'frozenfc2_model.pth')
             t.save(model.state_dict(), 'fshn_best_model.pth')
             print("New Lowest Loss in Network: {:.4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
 
@@ -96,6 +97,31 @@ def test():
         print('Accuracy of the network on the test images: {} %'.format(100 * correct / total))
 
 
+def dot_product():
+    model.load_state_dict(t.load('fshn_best_model.pth'))
+    fc3_weights = model.fc3.weight.data
+    model.eval()
+
+    # w1= fc3_weights.data[0]
+    # w2 = fc3_weights.data[1]
+    # mag_w1 = t.norm(w1)
+    # mag_w2 = t.norm(w2)
+    # cos_similiarity = t.dot(w1, w2) / (mag_w1 * mag_w2)
+    # print(cos_similiarity)
+
+    normalized_weights =  fc3_weights  / t.norm(fc3_weights, dim=1, keepdim=True)
+    #print(normalized_weights)
+    dot_product_tensor = t.mm(normalized_weights, normalized_weights.t())
+
+    t.set_printoptions(precision=2)
+
+    #cosine_similarity_matrix = t.round(dot_product_tensor, decimals=2)
+    #dot_array = dot_product_tensor.numpy()
+
+
+    print(dot_product_tensor)
+
 if __name__ == '__main__':
-    train()
-    test()
+    dot_product()
+    # train()
+    # test()

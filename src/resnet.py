@@ -2,12 +2,15 @@ import torch as t
 import torch.nn as nn
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+import math
+import matplotlib.pyplot as plt
 
 batch_size = 32
 num_classes = 10
 learning_rate = 0.001
-num_epochs = 13
+num_epochs = 3
 device = t.device('cuda' if t.cuda.is_available() else 'cpu')
+print(t.cuda.is_available())
 
 # Import dataset and load it
 
@@ -29,7 +32,7 @@ testdataset = DataLoader(test, batch_size=batch_size, shuffle=True)
 
 
 class BasicBlock(nn.Module):
-    def __init__(self,in_channels,out_channels,stride=1):
+    def __init__(self,in_channels,out_channels,stride=1,downsample = None):
         super(BasicBlock,self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels,out_channels,kernel_size=3,stride=stride,padding=1,bias=False)
@@ -38,13 +41,15 @@ class BasicBlock(nn.Module):
 
         self.conv2 = nn.Conv2d(out_channels,out_channels,kernel_size=3,stride=1,padding=1,bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
+        self.downsample = downsample
         self.relu2 = nn.ReLU(inplace=True)
-        self.downsample = nn.Sequential()
+        self.outchannels = out_channels
 
-        if stride != 1 or in_channels != out_channels:
-            self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels,out_channels,kernel_size=1,stride=stride,bias=False),
-                nn.BatchNorm2d(out_channels))
+
+        # if stride != 1 or in_channels != out_channels:
+        #     self.downsample = nn.Sequential(
+        #         nn.Conv2d(in_channels,out_channels,kernel_size=1,stride=stride,bias=False),
+        #         nn.BatchNorm2d(out_channels))
     def forward(self,x):
         residual = x
         x = self.conv1(x)
@@ -60,8 +65,8 @@ class BasicBlock(nn.Module):
 class ResNet18(nn.Module):
     def __init__(self):
         super (ResNet18, self).__init__()
-
-        self.conv1 =  nn.Conv2d(3,64,kernel_size=7,stride=2,padding=3,bias=False)
+        self.in_channels = 64
+        self.conv1 = nn.Conv2d(3,64,kernel_size=7,stride=2,padding=3,bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu1 = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -75,11 +80,17 @@ class ResNet18(nn.Module):
         self.fc = nn.Linear(512,num_classes)
 
     def make_layers(self, block, out_channels, blocks, stride=1):
-        layers = [block(64, out_channels, stride)]
-        for _ in range(1, blocks):
-            layers.append(block(out_channels, out_channels, stride=1))
+        downsample = None
+        if stride != 1 or self.in_channels != out_channels:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels))
+        layers = []
+        layers.append(block(self.in_channels, out_channels, stride, downsample))
+        self.in_channels = out_channels
+        for i in range(1, blocks):
+            layers.append(block(out_channels, out_channels))
         return nn.Sequential(*layers)
-
     def forward(self,x):
 
         x = self.conv1(x)
@@ -103,7 +114,7 @@ class ResNet18(nn.Module):
 num_classes = 10
 model = ResNet18().to(device)
 cost = nn.CrossEntropyLoss()  # cost function
-optimizer = t.optim.Adam(model.parameters(), lr=learning_rate)  # optimizer
+optimizer = t.optim.SGD(model.parameters(), lr=learning_rate)  # optimizer
 
 
 def train():
@@ -133,9 +144,10 @@ def train():
         if avg_loss < global_lowest_loss:
             global_lowest_loss = avg_loss
             best_epoch = epoch + 1
-            t.save(model.state_dict(), 'best_model.pth')
+            t.save(model.state_dict(), 'resnet_best_model.pth')
             print("New Lowest Loss in Network: {:.4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
-
+        test()
+    plot_averages()
     print("Lowest Loss in Network {:.4f} at Epoch [{}/{}]".format(global_lowest_loss, best_epoch, num_epochs))
 
 
@@ -154,7 +166,57 @@ def test():
         print('Accuracy of the network on the test images: {} %'.format(100 * correct / total))
 
 
+def dot_product():
+    model.load_state_dict(t.load('resnet_best_model.pth'))
+    fc_weights = model.fc.weight.data
+    model.eval()
+
+    normalized_weights =  fc_weights  / t.norm(fc_weights, dim=1, keepdim=True)
+    #print(normalized_weights)
+    dot_product_tensor = t.mm(normalized_weights, normalized_weights.t())
+
+    #t.set_printoptions(precision=2)
+    t.round(dot_product_tensor, decimals=2, out=dot_product_tensor)
+
+    #cosine_similarity_matrix = t.round(dot_product_tensor, decimals=2)
+    #dot_array = dot_product_tensor.numpy()
+
+
+
+    for i, row in enumerate(dot_product_tensor):
+        for j, col in enumerate(row):
+            dot_product_tensor[i][j] = math.acos(col) * (180 / math.pi)
+
+    sum = 0
+    for row in dot_product_tensor:
+        for col in row:
+            sum += abs(col)
+    avg = (sum)/90
+    print("Average of matrix: ", avg)
+    print(dot_product_tensor)
+    return avg
+
+
+    #TODO: 1-avg, then plot points for convergence after each matrix.
+
+
+
+def plot_averages():
+    global avg_angles
+    # Make sure avg_angles is a global variable or passed to the function as an argument
+    epochs = range(1, num_epochs + 1)  # Generate a list of epoch numbers from 1 to num_epochs
+    plt.figure(figsize=(10, 5))  # Optional: Change the figure size if needed
+    plt.plot(epochs, avg_angles, marker='o')  # Use a marker to indicate each data point
+    plt.xticks(epochs)  # Ensure all epoch numbers are shown on the x-axis
+    plt.yticks(range(80, 96, 5))  # Set y-axis ticks to show angles from 0 to 90
+    plt.xlabel('Epoch')
+    plt.ylabel('Average Angle')
+    plt.title('Convergence of Average Angle Over Epochs ResNet')
+    plt.grid(True)  # Optional: Add a grid for better readability
+    plt.show()
+
 
 if __name__ == '__main__':
-    train()
-    test()
+    dot_product()
+    #train()
+    #test()
